@@ -3,9 +3,9 @@
 	"theme": "default",
 	"keyBinding": "emacs",
         "autoSaveInterval": "2000",
-	"rootType": "UMLStateDiagram",
+	"rootTypes": ["UMLStateDiagram"],
 	"loadDepth": 10,
-	"defaultSyntax": "bgs",
+	"defaultSyntax": "c",
 	"syntaxToModeMap": {
 	    "bgs": {
 		"name":"text/x-python",
