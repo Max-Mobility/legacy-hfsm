@@ -230,7 +230,6 @@ define([
 
 	    
 	    self._cy.on('free', 'node', function( e ){
-		self._logger.error(e);
 		var n = e.cyTarget;
 		var p = n.position();
 		

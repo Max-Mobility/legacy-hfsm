@@ -85,7 +85,7 @@ define([
         }
     };
 
-    var rootTypes = ['Task','Timer'];
+    var rootTypes = ['UMLStateDiagram'];
 
     // This next function retrieves the relevant node information for the widget
     HFSMVizControl.prototype._getObjectDescriptor = function (nodeId) {
@@ -109,7 +109,7 @@ define([
 	    if (objDescriptor.isConnection) {
 		objDescriptor.src = node.getPointer('src').to;
 		objDescriptor.dst = node.getPointer('dst').to;
-		objDescriptor.text = node.getAttribute('Guard');
+		objDescriptor.text = node.getAttribute('event');
 	    }
 	    // make sure the root level has no parentId
 	    if (rootTypes.indexOf(objDescriptor.type) > -1)
