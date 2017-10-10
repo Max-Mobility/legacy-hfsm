@@ -16,7 +16,6 @@ define([
     'bower/blob-util/dist/blob-util.min',
     'text!./style2.css',
     'q',
-    'css!bower/cytoscape-context-menus/cytoscape-context-menus.css',
     'css!bower/cytoscape-panzoom/cytoscape.js-panzoom.css',
     'css!./styles/HFSMVizWidget.css'], function (
 	HFSMHtml,
