@@ -46,7 +46,7 @@ define([
         //set Widget title
         this.setTitle('');
 
-        this.widget = new HFSMVizWidget(this.logger, this.$el);
+        this.widget = new HFSMVizWidget(this.logger, this.$el, this._client);
 
         this.widget.setTitle = function (title) {
             self.setTitle(title);
@@ -72,6 +72,18 @@ define([
     HFSMVizPanel.prototype.onResize = function (width, height) {
         this.logger.debug('onResize --> width: ' + width + ', height: ' + height);
         this.widget.onWidgetContainerResize(width, height);
+    };
+    
+    /* * * * * * * * Toolbar related Functions       * * * * * * * */
+
+    HFSMVizPanel.prototype.getSplitPanelToolbarEl = function() {
+        this._splitPanelToolbarEl = IActivePanel.prototype.getSplitPanelToolbarEl.call(this);
+        // Set the size bigger than 40 x 40 and add some padding for the scroll-bar.
+        this._splitPanelToolbarEl.css({
+            'padding-right': '10px'
+        });
+        this.widget._addSplitPanelToolbarBtns(this._splitPanelToolbarEl);
+        return this._splitPanelToolbarEl;
     };
 
     /* * * * * * * * Visualizer life cycle callbacks * * * * * * * */

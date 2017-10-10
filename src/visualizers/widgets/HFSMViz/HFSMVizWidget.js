@@ -7,27 +7,44 @@
 
 define([
     'text!./HFSM.html',
-    'cytoscape/cytoscape',
-    'cytoscape-cose-bilkent/cytoscape-cose-bilkent',
+    './Dialog/Dialog',
+    './Simulator/Choice',
+    'bower/cytoscape/dist/cytoscape.min',
+    'cytoscape-panzoom',
+    'bower/cytoscape-cose-bilkent/cytoscape-cose-bilkent',
+    'bower/mustache.js/mustache.min',
+    'bower/blob-util/dist/blob-util.min',
     'text!./style2.css',
     'q',
+    'css!bower/cytoscape-context-menus/cytoscape-context-menus.css',
+    'css!bower/cytoscape-panzoom/cytoscape.js-panzoom.css',
     'css!./styles/HFSMVizWidget.css'], function (
 	HFSMHtml,
-	cytoscape,
-	regCose,
-	styleText,
+        Dialog,
+        Choice,
+        cytoscape,
+        cyPanZoom,
+        coseBilkent,
+        mustache,
+        blobUtil,
+        styleText,
 	Q) {
 	'use strict';
 
-	regCose( cytoscape );
+        cytoscape.use( cyPanZoom, $ );
+        cytoscape.use( coseBilkent );
 	
+        var rootTypes = ['UMLStateDiagram'];
+
 	var HFSMVizWidget,
             WIDGET_CLASS = 'h-f-s-m-viz';
 
-	HFSMVizWidget = function (logger, container) {
+	HFSMVizWidget = function (logger, container, client) {
             this._logger = logger.fork('Widget');
 
             this._el = container;
+
+            this._client = client;
 
             // set widget class
             this._el.addClass(WIDGET_CLASS);
@@ -88,23 +105,9 @@ define([
 		'name': 'cose-bilkent',
 		// Called on `layoutready`
 		ready: function () {
-		    self._cy.nodes().forEach(function(node) {
-			var p = node.position();
-			node.data('orgPos',{
-			    x: p.x,
-			    y: p.y
-			});
-		    });
 		},
 		// Called on `layoutstop`
 		stop: function () {
-		    self._cy.nodes().forEach(function(node) {
-			var p = node.position();
-			node.data('orgPos',{
-			    x: p.x,
-			    y: p.y
-			});
-		    });
 		},
 		// Whether to fit the network view after when done
 		fit: true,
@@ -145,140 +148,287 @@ define([
 	    var layoutPadding = 50;
 	    var layoutDuration = 500;
 
-	    function highlight( node ){
-		var nhood = node.closedNeighborhood();
+            // PAN ZOOM WIDGET:
 
-		self._cy.batch(function(){
-		    self._cy.elements("edge").not( nhood ).removeClass('highlighted').addClass('faded');
-		    self._cy.elements("node").not( nhood ).removeClass('highlighted').addClass('faded');
-		    nhood.removeClass('faded').addClass('highlighted');
-		    
-		    var npos = node.position();
-		    var w = window.innerWidth;
-		    var h = window.innerHeight;
+            // the default values of each option are outlined below:
+            var panZoom_defaults = {
+                zoomFactor: 0.05, // zoom factor per zoom tick
+                zoomDelay: 45, // how many ms between zoom ticks
+                minZoom: 0.1, // min zoom level
+                maxZoom: 10, // max zoom level
+                fitPadding: 50, // padding when fitting
+                panSpeed: 10, // how many ms in between pan ticks
+                panDistance: 10, // max pan distance per tick
+                panDragAreaSize: 75, // the length of the pan drag box in which the vector for panning is calculated (bigger = finer control of pan speed and direction)
+                panMinPercentSpeed: 0.25, // the slowest speed we can pan by (as a percent of panSpeed)
+                panInactiveArea: 8, // radius of inactive area in pan drag box
+                panIndicatorMinOpacity: 0.5, // min opacity of pan indicator (the draggable nib); scales from this to 1.0
+                zoomOnly: false, // a minimal version of the ui only with zooming (useful on systems with bad mousewheel resolution)
+                fitSelector: undefined, // selector of elements to fit
+                animateOnFit: function(){ // whether to animate on fit
+                    return false;
+                },
+                fitAnimationDuration: 1000, // duration of animation on fit
 
-		    self._cy.stop().animate({
-			fit: {
-			    eles: self._cy.elements(),
-			    padding: layoutPadding
-			}
-		    }, {
-			duration: layoutDuration
-		    }).delay( layoutDuration, function(){
-			nhood.layout({
-			    name: 'concentric',
-			    padding: layoutPadding,
-			    animate: true,
-			    animationDuration: layoutDuration,
-			    boundingBox: {
-				x1: npos.x - w/2,
-				x2: npos.x + w/2,
-				y1: npos.y - w/2,
-				y2: npos.y + w/2
-			    },
-			    fit: true,
-			    concentric: function( n ){
-				if( node.id() === n.id() ){
-				    return 2;
-				} else {
-				    return 1;
-				}
-			    },
-			    levelWidth: function(){
-				return 1;
-			    }
-			});
-		    } );
-		    
-		});
+                // icon class names
+                sliderHandleIcon: 'fa fa-minus',
+                zoomInIcon: 'fa fa-plus',
+                zoomOutIcon: 'fa fa-minus',
+                resetIcon: 'fa fa-expand'
+            };
+
+            self._cy.panzoom( panZoom_defaults );
+	    
+	    function highlight( node ) {
+		self.highlight(node);
 	    }
 
 	    function clear(){
-		self._cy.batch(function(){
-		    self._cy.$('.highlighted').forEach(function(n){
-			n.animate({
-			    position: n.data('orgPos')
-			});
-		    });
-		    
-		    self._cy.elements().removeClass('highlighted').removeClass('faded');
-		});
+		self.clear();
 	    }
 
-	    self._cy.on('free', 'node', function( e ){
-		var n = e.cyTarget;
-		var p = n.position();
-		
-		n.data('orgPos', {
-		    x: p.x,
-		    y: p.y
-		});
-	    });
+            // USED FOR NODE SELECTION AND MULTI-SELECTION
 
-	    self._cy.on('add', _.debounce(self.reLayout.bind(self), 250));
-	    
-	    self._cy.on('select', 'node', function(e){
-		var node = this;
-		if (node.id()) {
-		    WebGMEGlobal.State.registerActiveSelection([node.id()]);
-		}
-		highlight( node );
-	    });
+            self._selectedNodes = [];
+            self._cy.on('select', 'node, edge', function(e){
+                var node = this;
+                var id = node.id();
+                if (id) {
+                    if (self._selectedNodes.indexOf(id) == -1) {
+                        self._selectedNodes.push(id);
+                        WebGMEGlobal.State.registerActiveSelection(self._selectedNodes.slice(0));
+                    }
+                }
+                highlight( node );
+            });
 
-	    self._cy.on('cxttap', 'node', function(e) {
-		var node = this;
-		var hidden = self.hiddenNodes[node.id()];
-		if (node.isParent()) {
-		    // currently true, disable show children
-		    var children, descendants, edges;
-		    children = node.children();
-		    if (self.hiddenNodes[node.id()]) {
-			descendants = self.hiddenNodes[node.id()].nodes;
-			edges = self.hiddenNodes[node.id()].edges;
-		    }
-		    else {
-			descendants = node.descendants();
-			edges = descendants.connectedEdges();
-		    }
-		    self._cy.remove(edges);
-		    self._cy.remove(descendants);
-		    self.hiddenNodes[node.id()] = {
-			nodes: descendants,
-			edges: edges
-		    };
-		}
-		else if (hidden.nodes && hidden.edges) {
-		    // currently false, reenable show children
-		    hidden.nodes.restore();
-		    hidden.edges.restore();
-		    self.hiddenNodes[node.id()] = undefined;
-		}
-	    });
+            self._cy.on('unselect', 'node, edge', function(e){
+                var node = this;
+                var id = node.id();
+                if (id) {
+                    self._selectedNodes = self._selectedNodes.filter(function(n) {
+                        return id != n;
+                    });
+                    //self._selectedNodes = [];
+                    WebGMEGlobal.State.registerActiveSelection(self._selectedNodes.slice(0));
+                }
+                clear();
+            });
 
-	    self._cy.on('unselect', 'node', function(e){
-		var node = this;
+            // USED FOR KNOWING WHEN NODES ARE MOVED
+            self._webGME_to_cy_scale = 1;
+            self._grabbedNode = null;
+            self._cy.on('grabon', 'node', function(e) {
+                var node = this;
+                if (node.id()) {
+                    self._grabbedNode = node;
+                }
+            });
 
-		clear();
-	    });
+            self._cy.on('free', 'node', function(e) {
+                self._grabbedNode = null;
+            });
 
-	    self._el.find('#re_layout').on('click', function(){
-		self.reLayout();
-	    });
-	    
-	    self._el.find('#reset').on('click', function(){
-		self._cy.animate({
-		    fit: {
-			eles: self._cy.elements(),
-			padding: layoutPadding
-		    },
-		    duration: layoutDuration
-		});
-	    });
+            self._debouncedSaveNodePositions = _.debounce(self.saveNodePositions.bind(self), 500);
+            self._unsavedNodePositions = {};
+            self._cy.on('position', 'node', function(e) {
+                var node = this;
+                if (rootTypes.indexOf(node.data('type')) == -1) {
+                    var pos = self.cyPosToGmePos( node );
+                    self._unsavedNodePositions[node.id()] = pos;
+                    self._debouncedSaveNodePositions()
+                }
+            });
 	};
 
-	HFSMVizWidget.prototype.onWidgetContainerResize = function (width, height) {
-	    this._cy.resize();
-	};
+        /* * * * * * * * Display Functions  * * * * * * * */
+
+        function download(filename, text) {
+            var element = document.createElement('a');
+            var imgData = text.split(',')[1]; // after the comma is the actual image data
+
+            blobUtil.base64StringToBlob( imgData.toString() ).then(function(blob) {
+                var blobURL = blobUtil.createObjectURL(blob);
+
+                element.setAttribute('href', blobURL);
+                element.setAttribute('download', filename);
+                element.style.display = 'none';
+
+                document.body.appendChild(element);
+
+                element.click();
+
+                document.body.removeChild(element);
+            }).catch(function(err) {
+                console.log('Couldnt make blob from image!');
+                console.log(err);
+            });
+        }
+
+        HFSMVizWidget.prototype.onPanningClicked = function() {
+            var self = this;
+            self._cy.userPanningEnabled(true);
+            self._cy.boxSelectionEnabled(false);
+            self._cy.autoungrabify(false);
+        };
+
+        HFSMVizWidget.prototype.onBoxSelectClicked = function() {
+            var self = this;
+            self._cy.userPanningEnabled(false);
+            self._cy.boxSelectionEnabled(true);
+            self._cy.autoungrabify(true);
+        };
+
+        HFSMVizWidget.prototype._addSplitPanelToolbarBtns = function(toolbarEl) {
+            var self = this;
+
+            var layoutPadding = 50;
+            var layoutDuration = 500;
+
+            // BUTTON EVENT HANDLERS
+
+            var printEl = [
+                '<span id="print" class="split-panel-toolbar-btn fa fa-print">',
+                '</span>',
+            ].join('\n');
+
+            var moveEl = [
+                '<span id="pan" class="split-panel-toolbar-btn fa fa-arrows">',
+                '</span>',
+            ].join('\n');
+
+            var selectEl = [
+                '<span id="select" class="split-panel-toolbar-btn fa fa-crop">',
+                '</span>',
+            ].join('\n');
+
+            var zoomEl = [
+                '<span id="zoom" class="split-panel-toolbar-btn fa fa-home">',
+                '</span>',
+            ].join('\n');
+
+            var layoutEl = [
+                '<span id="layout" class="split-panel-toolbar-btn fa fa-random">',
+                '</span>',
+            ].join('\n');
+
+            toolbarEl.append(printEl);
+            //toolbarEl.append(moveEl);
+            //toolbarEl.append(selectEl);
+            toolbarEl.append(zoomEl);
+            toolbarEl.append(layoutEl);
+
+            toolbarEl.find('#print').on('click', function(){
+                var png = self._cy.png({
+                    full: true,
+                    scale: 6,
+                    bg: 'white'
+                });
+                download( self.HFSMName + '-HFSM.png', png );
+            });
+
+            toolbarEl.find('#pan').on('click', function() {
+                self.onPanningClicked();
+            });
+            
+            toolbarEl.find('#select').on('click', function() {
+                self.onBoxSelectClicked();
+            });
+            
+            toolbarEl.find('#zoom').on('click', function(){
+                self._cy.animate({
+                    fit: {
+                        eles: self._cy.elements(),
+                        padding: layoutPadding
+                    },
+                    duration: layoutDuration
+                });
+            });
+
+            toolbarEl.find('#layout').on('click', function(){
+                // ask if they really want to randomize the layout
+                var choice = new Choice();
+                var choices = [
+                    'Yes, run cose-bilkent layout.',
+                    'No, do not change any positions'
+                ];
+                choice.initialize( choices, "Really change the layout?" );
+                choice.show();
+                return choice.waitForChoice()
+                    .then(function(choice) {
+                        if (choice == choices[0])
+                            self.reLayout();
+                    });
+            });
+        };
+
+        HFSMVizWidget.prototype.highlight = function(node) {
+            var self = this;
+            node.select();
+        };
+
+        HFSMVizWidget.prototype.clear = function() {
+            var self = this;
+            self._cy.$(':selected').unselect();
+        };
+
+        /* * * * * * * * Node Position Functions  * * * * * * * */
+
+        HFSMVizWidget.prototype.getCyTopLeft = function(cyNode) {
+            
+        };
+
+        HFSMVizWidget.prototype.gmePosToCyPos = function(gmePos) {
+            var self = this;
+            var cyPos = gmePos;
+            /*
+            cyPos.x *= self._webGME_to_cy_scale;
+            cyPos.y *= self._webGME_to_cy_scale;
+            */
+            return cyPos;
+        };
+
+        HFSMVizWidget.prototype.cyPosToGmePos = function(cyNode) {
+            var self = this;
+            var cyPos = cyNode.position();
+            var gmePos = cyPos;
+            /*
+            gmePos.x /= self._webGME_to_cy_scale;
+            gmePos.y /= self._webGME_to_cy_scale;
+            */
+            return gmePos;
+        };
+
+        HFSMVizWidget.prototype.needToUpdatePosition = function(pos1, pos2) {
+            var dx = Math.abs(pos1.x - pos2.x);
+            var dy = Math.abs(pos1.y - pos2.y);
+            var dyThresh = 0.1;
+            var dxThresh = 0.1;
+            return (dy > dyThresh || dx > dxThresh);
+        };
+
+        HFSMVizWidget.prototype.saveNodePositions = function() {
+            var self = this;
+            var keys = Object.keys(self._unsavedNodePositions);
+
+            self._client.startTransaction();
+
+            keys.map(function(k) {
+                var id = k;
+                var pos = self._unsavedNodePositions[id];
+                if (self.nodes[id]) {
+                    var savedPos = self.nodes[id].position;
+                    if (self.needToUpdatePosition(pos, savedPos))
+                        self._client.setRegistry(id, 'position', pos);
+                }
+            });
+
+            self._client.completeTransaction();
+
+            self._unsavedNodePositions = {};
+        };
+
+        /* * * * * * * * Graph Creation Functions  * * * * * * * */
 
 	HFSMVizWidget.prototype.checkDependencies = function(desc) {
 	    var self = this;
@@ -352,7 +502,9 @@ define([
 
         HFSMVizWidget.prototype.reLayout = function() {
             var self = this;
-            self._cy.layout(self._layout_options);
+            var layout = self._cy.layout(self._layout_options);
+            layout.run();
+            //self._cy.nodes().qtip({ content: 'hi', position: { my: 'top center', at: 'bottom center' } })
         };
 
 	HFSMVizWidget.prototype.getDescData = function(desc) {
@@ -409,7 +561,34 @@ define([
 		group: 'nodes',
 		data: data
 	    };
-	    self._cy.add(node);
+
+            var parentCyNode = null;
+            var parentPos = null;
+            if (desc.parentId) {
+                var parentIdTag = desc.parentId.replace(/\//gm, "\\/");
+                var parentCyNode = self._cy.$('#'+parentIdTag);
+            }
+            if (parentCyNode) {
+                parentPos = parentCyNode.position();
+            }
+
+            var n = self._cy.add(node);
+
+            if (parentCyNode && parentPos) {
+                parentCyNode.position( parentPos );
+                //n.position( parentPos );
+                var pos = self.gmePosToCyPos( desc.position );
+                /*
+                var w = parentCyNode.width();
+                var h = parentCyNode.height();
+                pos.x -= w;
+                pos.y -= h;
+                */
+                //console.log('making node at position: '+pos.x+','+pos.y);
+                //n.relativePosition( pos );
+                n.position( pos );
+            }
+
 	    self.nodes[desc.id] = desc;
 	    self.updateDependencies();
 	};
@@ -472,7 +651,11 @@ define([
             }
 	};
 
-	/* * * * * * * * Visualizer event handlers * * * * * * * */
+        /* * * * * * * * Visualizer event handlers * * * * * * * */
+
+        HFSMVizWidget.prototype.onWidgetContainerResize = function (width, height) {
+            this._cy.resize();
+        };
 
 	HFSMVizWidget.prototype.onNodeClick = function (/*id*/) {
             // This currently changes the active node to the given id and

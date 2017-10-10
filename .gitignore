@@ -5,3 +5,4 @@ server.log
 server-error.log
 *~
 
+bower_components
