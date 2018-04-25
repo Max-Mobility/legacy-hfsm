@@ -73,13 +73,17 @@ if (state.transitions) {
 }
 
 void <%- state.stateName %>_finalization( void ) {
+  if (stateLevel_<%- state.stateLevel %> != <%- state.stateName %>)
+    return;
   <%- state.finalization %>
 <%
- if (state.parentState) {
+if (state.State_list) {
+  state.State_list.map(function(subState) {
 -%>
-  <%- state.parentState.stateName %>_finalization();
+  <%- subState.stateName %>_finalization();
 <%
- }
+  });
+}
 -%>
 }
 
