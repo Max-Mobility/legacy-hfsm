@@ -172,8 +172,6 @@
 // Define segments for const data in flash.
 // First the segment with addresses as used by the program (flash mapped as XDATA)
 -P(CONST)XDATA_ROM_C=0x8000-0xFFFF
--Z(CODE)XDATA_ROM_C2=0x28000-0x2FFFF
--Z(CODE)XDATA_ROM_C3=0x38000-0x3FFFF
 //
 // Then the segment with addresses as put in the hex file (flash bank 1)
 -P(CODE)XDATA_ROM_C_FLASH=0x18000-0x1FFFF
